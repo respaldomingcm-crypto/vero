@@ -50,7 +50,7 @@ async def analyze_ticket(file: UploadFile = File(...)):
         data_url = f"data:{file.content_type};base64,{b64_image}"
 
         completion = client.chat.completions.create(
-            model="meta-llama/llama-4-maverick-17b-128e-instruct",
+            model="meta-llama/llama-4-scout-17b-16e-instruct",
             messages=[
                 {"role": "system", "content": SYSTEM_PROMPT},
                 {"role": "user", "content": [
@@ -101,7 +101,7 @@ async def webhook(request: Request):
                 media_url = media_resp.json().get("url")
                 if client:
                     completion = client.chat.completions.create(
-                        model="meta-llama/llama-4-maverick-17b-128e-instruct",
+                        model="meta-llama/llama-4-scout-17b-16e-instruct",
                         messages=[
                             {"role": "system", "content": SYSTEM_PROMPT},
                             {"role": "user", "content": [
