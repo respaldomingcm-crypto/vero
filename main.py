@@ -1,12 +1,13 @@
 import os
-from fastapi import FastAPI, Request, Query
+import base64
+from fastapi import FastAPI, Request, Query, UploadFile, File
 from fastapi.responses import PlainTextResponse, JSONResponse
 import httpx
 from groq import Groq
 
 app = FastAPI(title="VERO - See it. Solved.")
 
-# ENV VARS - Set these in Render / Vercel
+# ENV VARS
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 WHATSAPP_TOKEN = os.getenv("WHATSAPP_TOKEN")
 WHATSAPP_PHONE_ID = os.getenv("WHATSAPP_PHONE_ID")
@@ -37,7 +38,36 @@ Rules:
 async def root():
     return {"status": "VERO online", "tagline": "Apunta. VERO resuelve."}
 
-# WhatsApp Verification (Meta requirement)
+# --- NUEVO ENDPOINT PARA PROBAR CON FOTO EN /docs ---
+@app.post("/analyze")
+async def analyze_ticket(file: UploadFile = File(...)):
+    if not client:
+        return JSONResponse({"error": "GROQ_API_KEY no configurada en Render"}, status_code=500)
+
+    try:
+        image_bytes = await file.read()
+        b64_image = base64.b64encode(image_bytes).decode('utf-8')
+        data_url = f"data:{file.content_type};base64,{b64_image}"
+
+        completion = client.chat.completions.create(
+            model="meta-llama/llama-4-maverick-17b-128e-instruct",
+            messages=[
+                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "user", "content": [
+                    {"type": "text", "text": "Analiza esta foto de un problema real. Devuelve SOLO el JSON."},
+                    {"type": "image_url", "image_url": {"url": data_url}}
+                ]}
+            ],
+            temperature=0.2,
+            max_tokens=800
+        )
+        result = completion.choices[0].message.content
+        return JSONResponse({"vero_result": result})
+    except Exception as e:
+        print(f"Error /analyze: {e}")
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+# WhatsApp Verification
 @app.get("/webhook")
 async def verify_webhook(
     hub_mode: str = Query(None, alias="hub.mode"),
@@ -52,29 +82,23 @@ async def verify_webhook(
 async def webhook(request: Request):
     body = await request.json()
     try:
-        # Extract message
         entry = body["entry"][0]["changes"][0]["value"]
         if "messages" not in entry:
             return JSONResponse({"status": "no message"})
-        
+
         msg = entry["messages"][0]
         from_number = msg["from"]
         msg_type = msg["type"]
-
         analysis_text = ""
-        
+
         if msg_type == "image":
-            # Get image id
             image_id = msg["image"]["id"]
-            # Download image URL from Meta
             async with httpx.AsyncClient() as http_client:
                 media_resp = await http_client.get(
                     f"https://graph.facebook.com/v20.0/{image_id}",
                     headers={"Authorization": f"Bearer {WHATSAPP_TOKEN}"}
                 )
                 media_url = media_resp.json().get("url")
-                # Download actual image bytes (simplified - in prod download and upload to Groq vision)
-                # For hackathon MVP: we call Groq Vision directly with URL
                 if client:
                     completion = client.chat.completions.create(
                         model="meta-llama/llama-4-maverick-17b-128e-instruct",
@@ -101,18 +125,14 @@ async def webhook(request: Request):
                 )
                 analysis_text = completion.choices[0].message.content
 
-        # Send back to WhatsApp
         if analysis_text:
             await send_whatsapp_message(from_number, format_vero_response(analysis_text))
-
     except Exception as e:
         print(f"Error VERO: {e}")
-
     return JSONResponse({"status": "ok"})
 
 def format_vero_response(json_text: str) -> str:
-    # MVP formatter - in prod parse JSON
-    return f"""👁️ *VERO vio esto:*\n\n{json_text}\n\n¿Quieres que lo haga por ti? Responde *Sí, hazlo* 👇"""
+    return f"""👁 *VERO vio esto:*\n\n{json_text}\n\n¿Quieres que lo haga por ti? Responde *Sí, hazlo* 👇"""
 
 async def send_whatsapp_message(to: str, text: str):
     if not WHATSAPP_TOKEN or not WHATSAPP_PHONE_ID:
@@ -130,5 +150,3 @@ async def send_whatsapp_message(to: str, text: str):
             "Authorization": f"Bearer {WHATSAPP_TOKEN}",
             "Content-Type": "application/json"
         })
-
-# Run: uvicorn main:app --host 0.0.0.0 --port 10000
