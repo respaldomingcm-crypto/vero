@@ -50,7 +50,7 @@ async def analyze_ticket(file: UploadFile = File(...)):
         data_url = f"data:{file.content_type};base64,{b64_image}"
 
         completion = client.chat.completions.create(
-            model="qwen/qwen3.6-27b",
+            model="qwen/qwen3.8-27b",
             messages=[
                 {"role": "system", "content": SYSTEM_PROMPT},
                 {"role": "user", "content": [
@@ -101,7 +101,7 @@ async def webhook(request: Request):
                 media_url = media_resp.json().get("url")
                 if client:
                     completion = client.chat.completions.create(
-                        model="qwen/qwen3.6-27b",
+                        model="qwen/qwen3.8-27b",
                         messages=[
                             {"role": "system", "content": SYSTEM_PROMPT},
                             {"role": "user", "content": [
@@ -117,7 +117,7 @@ async def webhook(request: Request):
             text = msg.get("text", {}).get("body", "")
             if client:
                 completion = client.chat.completions.create(
-                    model="llama-3.3-70b-versatile",
+                    model="qwen/qwen3.8-27b",
                     messages=[
                         {"role": "system", "content": SYSTEM_PROMPT},
                         {"role": "user", "content": f"Usuario dice: {text}. Si no hay foto, pídele una foto de su problema (factura, refri, recibo)."}
